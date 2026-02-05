@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>PTW Log</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    :root{
+      --base-font: Aptos, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      --bg:#0b1220;
+      --card:#111a2e;
+      --line:#223154;
+      --text:#e8eefc;
+      --muted:#a8b4d6;
+      --btn:#2b5cff;
+      --btn2:#1a2b55;
+      --danger:#ff3b5c;
+    }
+    body{
+      margin:0; font-family:var(--base-font);
+      background:linear-gradient(180deg,var(--bg),#070b14);
+      color:var(--text);
+    }
+    .container, .container *{ font-family:var(--base-font) !important; }
+    .container{ max-width:1200px; margin:0 auto; padding:22px; }
+    .topbar{ display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
+    .title{ font-size:22px; font-weight:700; margin:0; }
+    .nav a{
+      color:var(--text); text-decoration:none;
+      padding:10px 12px; border:1px solid var(--line);
+      border-radius:12px; background:rgba(255,255,255,0.03);
+    }
+    .card{
+      margin-top:16px;
+      background:rgba(17,26,46,0.92);
+      border:1px solid var(--line);
+      border-radius:18px;
+      padding:16px;
+      box-shadow:0 12px 40px rgba(0,0,0,0.35);
+    }
+    input{
+      width:100%;
+      box-sizing:border-box;
+      padding:11px 12px;
+      border-radius:12px;
+      border:1px solid var(--line);
+      background:rgba(255,255,255,0.04);
+      color:var(--text);
+      outline:none;
+      font-size:14px;
+    }
+    button{
+      border:none; border-radius:12px;
+      padding:11px 14px; color:white; cursor:pointer;
+      font-weight:700; font-size:14px;
+    }
+    .primary{ background:var(--btn); }
+    .secondary{ background:var(--btn2); border:1px solid var(--line); }
+    .danger{ background:var(--danger); }
+
+    .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .status{ font-size:13px; color:var(--muted); }
+
+    table{
+      width:100%;
+      border-collapse:separate;
+      border-spacing:0;
+      overflow:hidden;
+      border-radius:14px;
+      border:1px solid var(--line);
+      background:rgba(0,0,0,0.18);
+      margin-top:12px;
+    }
+    th,td{
+      padding:10px 10px;
+      border-bottom:1px solid rgba(34,49,84,0.7);
+      vertical-align:top;
+      font-size:13px;
+    }
+    th{ text-align:left; color:var(--muted); background:rgba(255,255,255,0.03); }
+    tr:last-child td{ border-bottom:none; }
+
+    .mono{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
+      font-size:12px;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      max-width:520px;
+      display:block;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="topbar">
+      <h1 class="title">PTW Log</h1>
+      <div class="nav">
+        <a href="index.html">Back to Handler</a>
+      </div>
+    </div>
+
+    <div class="card" id="loginCard">
+      <div class="row" style="justify-content:space-between;">
+        <div class="status" id="loginStatus">Login required.</div>
+        <button class="secondary" id="btnLogout" type="button">Logout</button>
+      </div>
+      <div class="status" style="margin-top:8px;">
+        If you came here directly, open Handler first and login there (magic link). Then return here.
+      </div>
+    </div>
+
+    <div class="card" id="appCard" style="display:none;">
+      <div class="row">
+        <div style="flex:1; min-width:240px;">
+          <input id="search" placeholder="Search (department / PTW type / company / deck / firezone / location / QR string)" />
+        </div>
+        <button class="primary" id="btnRefresh" type="button">Refresh</button>
+        <button class="secondary" id="btnExport" type="button">Export CSV</button>
+      </div>
+
+      <div class="status" id="meta" style="margin-top:10px;"></div>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width:160px;">Created</th>
+            <th style="width:120px;">Dept</th>
+            <th style="width:160px;">PTW Type</th>
+            <th style="width:220px;">Company</th>
+            <th style="width:90px;">Deck</th>
+            <th style="width:90px;">FZ</th>
+            <th>QR String</th>
+            <th style="width:110px;">Action</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+<script>
+  // ========= CONFIG =========
+  const SUPABASE_URL = "https://brbmotylbxgaejcameyz.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJyYm1vdHlsYnhnYWVqY2FtZXl6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyODc1MzAsImV4cCI6MjA4NTg2MzUzMH0.j-cAZcz8rtqSOjPLdB7TbANgmcJXmIHXL4hCv2HNAfs";
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const $ = (id) => document.getElementById(id);
+  let allRows = [];
+
+  async function checkAllowlisted(){
+    const { data: { user } } = await supabase.auth.getUser();
+    if(!user) return false;
+
+    const { data, error } = await supabase
+      .from("allowed_users")
+      .select("user_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if(error) return false;
+    return !!data;
+  }
+
+  function formatTime(iso){
+    try{
+      const d = new Date(iso);
+      return d.toLocaleString();
+    }catch{
+      return iso;
+    }
+  }
+
+  function renderTable(list){
+    const tb = $("rows");
+    tb.innerHTML = "";
+
+    for(const r of list){
+      const p = r.payload || {};
+      const tr = document.createElement("tr");
+
+      tr.innerHTML = `
+        <td>${formatTime(r.created_at)}</td>
+        <td>${(p.department || "").toString()}</td>
+        <td>${(p.ptwType || "").toString()}</td>
+        <td>${(p.company || "").toString()}</td>
+        <td>${(p.deck || "").toString()}</td>
+        <td>${(p.firezone || "").toString()}</td>
+        <td><span class="mono" title="${r.qr_string}">${r.qr_string}</span></td>
+        <td>
+          <button class="danger" data-del="${r.id}" type="button">Delete</button>
+        </td>
+      `;
+
+      tb.appendChild(tr);
+    }
+
+    // Hook delete buttons
+    tb.querySelectorAll("button[data-del]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const id = btn.getAttribute("data-del");
+        if(!confirm("Delete this log entry? (Only your own entries can be deleted)")) return;
+
+        const { error } = await supabase.from("ptw_log").delete().eq("id", id);
+        if(error){
+          alert("Delete failed: " + error.message);
+          return;
+        }
+        await loadData();
+      });
+    });
+  }
+
+  function applyFilter(){
+    const q = $("search").value.trim().toLowerCase();
+    if(!q){
+      renderTable(allRows);
+      $("meta").textContent = `Showing ${allRows.length} entries.`;
+      return;
+    }
+    const filtered = allRows.filter(r => {
+      const p = r.payload || {};
+      const hay = [
+        p.department, p.ptwType, p.company, p.deck, p.firezone, p.location,
+        r.qr_string
+      ].join(" ").toLowerCase();
+      return hay.includes(q);
+    });
+    renderTable(filtered);
+    $("meta").textContent = `Showing ${filtered.length} of ${allRows.length} entries.`;
+  }
+
+  function exportCSV(){
+    // export minimal fields + QR string
+    const header = ["created_at","department","ptwType","company","deck","firezone","qr_string"];
+    const lines = [header.join(",")];
+
+    for(const r of allRows){
+      const p = r.payload || {};
+      const row = [
+        r.created_at,
+        p.department || "",
+        p.ptwType || "",
+        p.company || "",
+        p.deck || "",
+        p.firezone || "",
+        r.qr_string || ""
+      ].map(v => `"${String(v).replace(/"/g,'""')}"`);
+      lines.push(row.join(","));
+    }
+
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "ptw_log.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function loadData(){
+    $("meta").textContent = "Loading...";
+    const { data, error } = await supabase
+      .from("ptw_log")
+      .select("id, created_at, qr_string, payload")
+      .order("created_at", { ascending: false })
+      .limit(500);
+
+    if(error){
+      $("meta").textContent = "Load failed: " + error.message;
+      return;
+    }
+    allRows = data || [];
+    applyFilter();
+  }
+
+  async function refreshUI(){
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if(!session){
+      $("loginCard").style.display = "block";
+      $("appCard").style.display = "none";
+      $("loginStatus").textContent = "Not logged in. Open Handler, login, then come back here.";
+      return;
+    }
+
+    const allow = await checkAllowlisted();
+    if(!allow){
+      $("loginCard").style.display = "block";
+      $("appCard").style.display = "none";
+      $("loginStatus").textContent = "Logged in, but NOT allowed. Ask admin to add you to allowed_users.";
+      return;
+    }
+
+    $("loginCard").style.display = "none";
+    $("appCard").style.display = "block";
+
+    await loadData();
+  }
+
+  $("btnLogout").addEventListener("click", async () => {
+    await supabase.auth.signOut();
+    await refreshUI();
+  });
+
+  $("btnRefresh").addEventListener("click", loadData);
+  $("btnExport").addEventListener("click", exportCSV);
+  $("search").addEventListener("input", applyFilter);
+
+  supabase.auth.onAuthStateChange(async () => {
+    await refreshUI();
+  });
+
+  refreshUI();
+</script>
+</body>
+</html>

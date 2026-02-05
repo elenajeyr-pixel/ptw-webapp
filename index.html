@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>PTW Handler</title>
+
+  <!-- Supabase + QR -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+
+  <style>
+    :root{
+      --base-font: Aptos, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      --bg:#0b1220;
+      --card:#111a2e;
+      --line:#223154;
+      --text:#e8eefc;
+      --muted:#a8b4d6;
+      --btn:#2b5cff;
+      --btn2:#1a2b55;
+      --danger:#ff3b5c;
+    }
+    html,body{height:100%;}
+    body{
+      margin:0;
+      font-family:var(--base-font);
+      background:linear-gradient(180deg,var(--bg),#070b14);
+      color:var(--text);
+    }
+    /* bulletproof Aptos */
+    .container, .container *{ font-family:var(--base-font) !important; }
+
+    .container{ max-width:1100px; margin:0 auto; padding:22px; }
+    .topbar{ display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
+    .title{ font-size:22px; font-weight:700; margin:0; }
+    .nav a{
+      color:var(--text);
+      text-decoration:none;
+      padding:10px 12px;
+      border:1px solid var(--line);
+      border-radius:12px;
+      background:rgba(255,255,255,0.03);
+    }
+    .nav a:hover{ background:rgba(255,255,255,0.06); }
+
+    .card{
+      margin-top:16px;
+      background:rgba(17,26,46,0.92);
+      border:1px solid var(--line);
+      border-radius:18px;
+      padding:16px;
+      box-shadow:0 12px 40px rgba(0,0,0,0.35);
+    }
+
+    .grid{ display:grid; grid-template-columns:repeat(12,1fr); gap:12px; }
+    .col-12{ grid-column:span 12; }
+    .col-6{ grid-column:span 6; }
+    .col-4{ grid-column:span 4; }
+    .col-3{ grid-column:span 3; }
+    .col-2{ grid-column:span 2; }
+
+    label{ display:block; font-size:14px; font-weight:700; margin-bottom:6px; }
+    input, select, textarea{
+      width:100%;
+      box-sizing:border-box;
+      padding:11px 12px;
+      border-radius:12px;
+      border:1px solid var(--line);
+      background:rgba(255,255,255,0.04);
+      color:var(--text);
+      outline:none;
+      font-size:14px;
+    }
+    textarea{ min-height:90px; resize:vertical; }
+
+    .row-inline{ display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    .inline-check{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      padding:10px 12px;
+      border:1px solid var(--line);
+      border-radius:12px;
+      background:rgba(255,255,255,0.03);
+    }
+    .inline-check input{ width:auto; }
+
+    .hint{ font-size:12px; color:var(--muted); margin-top:6px; }
+
+    .btns{ display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
+    button{
+      border:none;
+      border-radius:12px;
+      padding:11px 14px;
+      color:white;
+      cursor:pointer;
+      font-weight:700;
+      font-size:14px;
+    }
+    .primary{ background:var(--btn); }
+    .secondary{ background:var(--btn2); border:1px solid var(--line); }
+    .danger{ background:var(--danger); }
+
+    .hr{ height:1px; background:var(--line); margin:14px 0; }
+
+    .hidden{ display:none !important; }
+
+    .qr-wrap{ display:flex; gap:18px; flex-wrap:wrap; align-items:flex-start; }
+    #qrcode{ background:white; padding:10px; border-radius:12px; }
+    .mono{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
+      white-space:pre-wrap;
+      word-break:break-word;
+      padding:12px;
+      border-radius:12px;
+      border:1px solid var(--line);
+      background:rgba(0,0,0,0.25);
+      color:var(--text);
+      min-width:320px;
+      max-width:620px;
+    }
+
+    .loginBox{
+      display:flex; gap:10px; flex-wrap:wrap; align-items:center;
+    }
+    .status{ font-size:13px; color:var(--muted); }
+    @media (max-width:900px){
+      .col-6,.col-4,.col-3,.col-2{ grid-column:span 12; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+
+    <div class="topbar">
+      <h1 class="title">PTW Handler (Web)</h1>
+      <div class="nav">
+        <a href="log.html">Open Log</a>
+      </div>
+    </div>
+
+    <!-- LOGIN CARD -->
+    <div class="card" id="loginCard">
+      <div class="grid">
+        <div class="col-12">
+          <p style="margin:0 0 10px 0; color:var(--muted);">
+            Login required. You’ll receive a magic link by email.
+          </p>
+          <div class="loginBox">
+            <input id="email" type="email" placeholder="your.email@company.com" />
+            <button class="primary" id="btnSendLink" type="button">Send login link</button>
+            <button class="secondary hidden" id="btnLogout" type="button">Logout</button>
+          </div>
+          <div class="hint" id="loginHint"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- APP CARD -->
+    <div class="card hidden" id="appCard">
+
+      <div class="grid">
+        <div class="col-12">
+          <div class="row-inline" style="justify-content:space-between;">
+            <div class="status" id="whoami"></div>
+            <button class="secondary" id="btnClear" type="button">Clear</button>
+          </div>
+        </div>
+
+        <div class="col-4">
+          <label>Department</label>
+          <select id="department">
+            <option value="Deck">Deck</option>
+            <option value="Engine">Engine</option>
+            <option value="Hotel">Hotel</option>
+          </select>
+        </div>
+
+        <div class="col-4">
+          <label>Ship Contact</label>
+          <input id="shipContact" value="tba" />
+          <div class="hint">This is your 2nd QR element (Excel had “tba”).</div>
+        </div>
+
+        <div class="col-4">
+          <label>PTW Type</label>
+          <select id="ptwType">
+            <option value="Hot Work">Hot Work</option>
+            <option value="Enclosed Space">Enclosed Space</option>
+            <option value="Work at Height">Work at Height</option>
+            <option value="Working on Elevator">Working on Elevator</option>
+          </select>
+        </div>
+
+        <div class="col-6">
+          <label>Work Description</label>
+          <input id="workDesc" placeholder="test" />
+        </div>
+
+        <div class="col-6">
+          <label>Company</label>
+          <input id="company" placeholder="test" />
+        </div>
+
+        <div class="col-6">
+          <label>Point of Contact (Company)</label>
+          <input id="pocCompany" placeholder="test" />
+        </div>
+
+        <div class="col-6">
+          <label>Included Workers</label>
+          <input id="workers" placeholder="test" />
+        </div>
+
+        <div class="col-3">
+          <label>Deck</label>
+          <input id="deck" placeholder="2" />
+        </div>
+        <div class="col-3">
+          <label>Firezone</label>
+          <input id="firezone" placeholder="5" />
+        </div>
+        <div class="col-6">
+          <label>Location</label>
+          <input id="location" placeholder="test" />
+        </div>
+
+        <div class="col-12">
+          <label>Remarks</label>
+          <input id="remarks" placeholder="" />
+        </div>
+
+        <div class="col-12">
+          <div class="row-inline">
+            <label class="inline-check">
+              <input type="checkbox" id="rescueFlag" />
+              Rescue Point required
+            </label>
+          </div>
+          <div class="hint">If checked, extra rescue fields will be included in QR.</div>
+        </div>
+
+        <div class="col-4">
+          <label>Rescue Deck</label>
+          <input id="rescueDeck" placeholder="(only if rescue checked)" />
+        </div>
+        <div class="col-4">
+          <label>Rescue Firezone</label>
+          <input id="rescueFZ" placeholder="(only if rescue checked)" />
+        </div>
+        <div class="col-4">
+          <label>Rescue Location</label>
+          <input id="rescueLoc" placeholder="(only if rescue checked)" />
+        </div>
+
+        <div class="col-6">
+          <label>Start (date & time)</label>
+          <input id="startDT" type="datetime-local" />
+        </div>
+
+        <div class="col-6">
+          <label>End (date & time)</label>
+          <input id="endDT" type="datetime-local" />
+        </div>
+
+        <div class="col-12">
+          <div class="row-inline">
+            <label class="inline-check">
+              <input type="checkbox" id="nightshiftFlag" />
+              Nightshift Required:
+            </label>
+
+            <select id="nightshiftMode" class="hidden" style="max-width:260px;">
+              <option value="">(choose)</option>
+              <option value="NO">Only Nightshift</option>
+              <option value="DN">Day and Nightshift</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="col-12">
+          <div style="margin-top:10px; font-size:14px; font-weight:700;">
+            Does your scope involve any penetrations or impact to the vessel’s deck or bulkheads?
+          </div>
+          <div class="row-inline" style="margin-top:8px;">
+            <label class="inline-check">
+              <input type="checkbox" id="penetrationFlag" />
+              Penetration
+            </label>
+            <label class="inline-check">
+              <input type="checkbox" id="deckBulkheadFlag" />
+              Deck/Bulkhead
+            </label>
+          </div>
+        </div>
+
+        <div class="col-12">
+          <div class="btns">
+            <button class="primary" id="btnGenerate" type="button">Generate QR + Save</button>
+            <button class="secondary" id="btnOnlyGenerate" type="button">Generate QR (no save)</button>
+          </div>
+          <div class="hint" id="saveHint"></div>
+        </div>
+
+        <div class="col-12">
+          <div class="hr"></div>
+          <div class="qr-wrap hidden" id="qrBlock">
+            <div id="qrcode"></div>
+            <div>
+              <div style="font-weight:700; margin-bottom:6px;">QR String (exactly what is encoded)</div>
+              <div class="mono" id="qrStringOut"></div>
+              <div class="btns">
+                <button class="secondary" id="btnCopy" type="button">Copy string</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+<script>
+  // ========= CONFIG (PASTE YOUR SUPABASE VALUES) =========
+  const SUPABASE_URL = "https://brbmotylbxgaejcameyz.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJyYm1vdHlsYnhnYWVqY2FtZXl6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyODc1MzAsImV4cCI6MjA4NTg2MzUzMH0.j-cAZcz8rtqSOjPLdB7TbANgmcJXmIHXL4hCv2HNAfs";
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // ========= HELPERS =========
+  const $ = (id) => document.getElementById(id);
+
+  function pad2(n){ n = String(n); return n.length === 1 ? "0"+n : n; }
+
+  function dtToParts(dtStr){
+    // dtStr from datetime-local: "2026-01-17T08:00"
+    if(!dtStr) return null;
+    const [d, t] = dtStr.split("T");
+    const [yyyy, mm, dd] = d.split("-");
+    const [hh, mi] = t.split(":");
+    return { yyyy, mm, dd, hh, mi };
+  }
+
+  // Build QR string with NO leading/trailing underscores.
+  // IMPORTANT: Nightshift segment is INCLUDED ONLY if Nightshift checkbox is ticked.
+  // That matches your preference to avoid empty "__" segment.
+  function buildQrString(){
+    const dep = $("department").value.trim();
+    const ship = $("shipContact").value.trim() || "tba";
+    const ptw = $("ptwType").value.trim();
+
+    const work = $("workDesc").value.trim();
+    const comp = $("company").value.trim();
+    const pocC = $("pocCompany").value.trim();
+    const workers = $("workers").value.trim();
+
+    const deck = $("deck").value.trim();
+    const fz = $("firezone").value.trim();
+    const loc = $("location").value.trim();
+    const rem = $("remarks").value.trim();
+
+    const rescue = $("rescueFlag").checked ? "Y" : "N";
+    const rDeck = $("rescueDeck").value.trim();
+    const rFz = $("rescueFZ").value.trim();
+    const rLoc = $("rescueLoc").value.trim();
+
+    const s = dtToParts($("startDT").value);
+    const e = dtToParts($("endDT").value);
+
+    if(!s || !e) throw new Error("Start and End date/time are required.");
+
+    // Nightshift: include ONLY if checkbox is checked, else omit the whole segment
+    let nightSeg = null;
+    if($("nightshiftFlag").checked){
+      const mode = $("nightshiftMode").value; // "NO" or "DN"
+      if(mode !== "NO" && mode !== "DN") throw new Error("Select Nightshift mode (Only Nightshift / Day and Nightshift).");
+      nightSeg = mode;
+    }
+
+    const pen = $("penetrationFlag").checked ? "Y" : "N";
+    const dbh = $("deckBulkheadFlag").checked ? "Y" : "N";
+
+    // Order aligned with your old Excel mapping:
+    // 0 dep
+    // 1 shipContact ("tba")
+    // 2 ptwType
+    // 3 workDesc
+    // 4 company
+    // 5 pocCompany
+    // 6 workers
+    // 7 deck
+    // 8 firezone
+    // 9 location
+    // 10 remarks
+    // 11 rescueFlag(Y/N)
+    // 12 rescueDeck
+    // 13 rescueFZ
+    // 14 rescueLocation
+    // 15..19 start yyyy mm dd hh mi
+    // 20..24 end yyyy mm dd hh mi
+    // [optional] nightshift (NO/DN) only if selected
+    // last two: penetration, deck/bulkhead
+    const parts = [
+      dep, ship, ptw,
+      work, comp, pocC, workers,
+      deck, fz, loc, rem,
+      rescue,
+      (rescue === "Y" ? rDeck : ""),
+      (rescue === "Y" ? rFz : ""),
+      (rescue === "Y" ? rLoc : ""),
+      s.yyyy, s.mm, s.dd, s.hh, s.mi,
+      e.yyyy, e.mm, e.dd, e.hh, e.mi
+    ];
+
+    if(nightSeg) parts.push(nightSeg);
+    parts.push(pen, dbh);
+
+    // Clean: convert undefined/null to ""
+    const cleaned = parts.map(v => (v == null ? "" : String(v)));
+
+    // IMPORTANT: no leading/trailing underscore
+    return cleaned.join("_");
+  }
+
+  function buildPayload(qrString){
+    return {
+      qrString,
+      department: $("department").value.trim(),
+      shipContact: $("shipContact").value.trim() || "tba",
+      ptwType: $("ptwType").value.trim(),
+      workDescription: $("workDesc").value.trim(),
+      company: $("company").value.trim(),
+      pocCompany: $("pocCompany").value.trim(),
+      includedWorkers: $("workers").value.trim(),
+      deck: $("deck").value.trim(),
+      firezone: $("firezone").value.trim(),
+      location: $("location").value.trim(),
+      remarks: $("remarks").value.trim(),
+      rescueRequired: $("rescueFlag").checked,
+      rescueDeck: $("rescueDeck").value.trim(),
+      rescueFirezone: $("rescueFZ").value.trim(),
+      rescueLocation: $("rescueLoc").value.trim(),
+      startDT: $("startDT").value,
+      endDT: $("endDT").value,
+      nightshiftRequired: $("nightshiftFlag").checked,
+      nightshiftMode: $("nightshiftMode").value || "",
+      penetration: $("penetrationFlag").checked,
+      deckBulkhead: $("deckBulkheadFlag").checked
+    };
+  }
+
+  function renderQr(qrString){
+    $("qrStringOut").textContent = qrString;
+
+    const qrDiv = $("qrcode");
+    qrDiv.innerHTML = "";
+    new QRCode(qrDiv, {
+      text: qrString,
+      width: 260,
+      height: 260,
+      correctLevel: QRCode.CorrectLevel.M
+    });
+
+    $("qrBlock").classList.remove("hidden");
+  }
+
+  // ========= AUTH + ALLOWLIST CHECK =========
+  async function checkAllowlisted(){
+    const { data: { user } } = await supabase.auth.getUser();
+    if(!user) return false;
+
+    const { data, error } = await supabase
+      .from("allowed_users")
+      .select("user_id,email")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if(error) return false;
+    return !!data;
+  }
+
+  async function refreshUI(){
+    const { data: { session } } = await supabase.auth.getSession();
+
+    $("loginHint").textContent = "";
+    $("saveHint").textContent = "";
+
+    if(!session){
+      $("loginCard").classList.remove("hidden");
+      $("appCard").classList.add("hidden");
+      $("btnLogout").classList.add("hidden");
+      return;
+    }
+
+    const allow = await checkAllowlisted();
+    if(!allow){
+      $("loginCard").classList.remove("hidden");
+      $("appCard").classList.add("hidden");
+      $("btnLogout").classList.remove("hidden");
+      $("loginHint").textContent = "You are logged in, but NOT allowed. Ask admin to add you to allowed_users.";
+      return;
+    }
+
+    const userEmail = session.user.email || "(no email)";
+    $("whoami").textContent = "Logged in as: " + userEmail;
+
+    $("loginCard").classList.add("hidden");
+    $("appCard").classList.remove("hidden");
+  }
+
+  // ========= EVENTS =========
+  $("nightshiftFlag").addEventListener("change", () => {
+    $("nightshiftMode").classList.toggle("hidden", !$("nightshiftFlag").checked);
+    if(!$("nightshiftFlag").checked) $("nightshiftMode").value = "";
+  });
+
+  $("btnSendLink").addEventListener("click", async () => {
+    const email = $("email").value.trim();
+    if(!email){
+      $("loginHint").textContent = "Type your email first.";
+      return;
+    }
+    const redirectTo = window.location.origin + window.location.pathname; // return to handler page
+    const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectTo } });
+    $("loginHint").textContent = error ? ("Login link failed: " + error.message) : "Check your email and click the login link.";
+  });
+
+  $("btnLogout").addEventListener("click", async () => {
+    await supabase.auth.signOut();
+    await refreshUI();
+  });
+
+  $("btnCopy").addEventListener("click", async () => {
+    const t = $("qrStringOut").textContent || "";
+    await navigator.clipboard.writeText(t);
+    $("saveHint").textContent = "Copied.";
+  });
+
+  $("btnClear").addEventListener("click", () => {
+    // reset the easy way: reload page
+    window.location.reload();
+  });
+
+  $("btnOnlyGenerate").addEventListener("click", () => {
+    try{
+      const qr = buildQrString();
+      renderQr(qr);
+      $("saveHint").textContent = "Generated (not saved).";
+    }catch(e){
+      $("saveHint").textContent = e.message;
+    }
+  });
+
+  $("btnGenerate").addEventListener("click", async () => {
+    try{
+      $("saveHint").textContent = "Working...";
+      const qr = buildQrString();
+      const payload = buildPayload(qr);
+
+      renderQr(qr);
+
+      const { error } = await supabase.from("ptw_log").insert([{
+        qr_string: qr,
+        payload: payload
+      }]);
+
+      if(error) throw error;
+      $("saveHint").textContent = "Saved to log ✅";
+    }catch(e){
+      $("saveHint").textContent = "Error: " + (e.message || String(e));
+    }
+  });
+
+  // React to auth changes (magic link)
+  supabase.auth.onAuthStateChange(async () => {
+    await refreshUI();
+  });
+
+  // First load
+  refreshUI();
+</script>
+</body>
+</html>
